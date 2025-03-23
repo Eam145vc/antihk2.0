@@ -137,6 +137,7 @@ function loadClientData() {
         })
         .then(data => {
             clientData = data;
+            console.log("Datos del cliente recibidos:", clientData);
             
             // Ocultar loader y mostrar detalles
             document.getElementById('loadingContainer').style.display = 'none';
@@ -167,7 +168,10 @@ function loadClientData() {
 
 // Actualizar la interfaz de usuario con los datos del cliente
 function updateClientUI() {
-    if (!clientData) return;
+    if (!clientData) {
+        console.error("No hay datos de cliente para actualizar la UI");
+        return;
+    }
     
     // Información básica del cliente
     document.getElementById('clientName').textContent = clientData.participantId || 'Cliente sin nombre';
@@ -234,7 +238,10 @@ function updateTrustScore(score) {
 
 // Actualizar información del sistema
 function updateSystemInfo() {
-    if (!clientData || !clientData.systemInfo) return;
+    if (!clientData || !clientData.systemInfo) {
+        console.log("No hay información de sistema disponible");
+        return;
+    }
     
     const sysInfo = clientData.systemInfo;
     
@@ -664,6 +671,8 @@ function addActivity(severity, message, timestamp = new Date()) {
 
 // Cargar alertas del cliente
 function loadClientAlerts() {
+    if (!clientData || !clientData.channel) return;
+    
     // Solicitar alertas específicas de este cliente
     fetch(`/api/alerts/${clientData.channel}?limit=50&sessionId=${sessionId}`)
         .then(response => response.json())
