@@ -280,6 +280,15 @@ function initMetricChart(elementId, color) {
     return null;
 }
 
+// Función para generar datos aleatorios para los gráficos
+function generateRandomData(count, min, max) {
+    const data = [];
+    for (let i = 0; i < count; i++) {
+        data.push(Math.floor(Math.random() * (max - min + 1)) + min);
+    }
+    return data;
+}
+
 // Cargar lista de clientes
 function loadClients() {
     const playersTableBody = document.getElementById('playersTableBody');
@@ -730,10 +739,8 @@ function showDecisionModal(alertData) {
 
 // Ver detalles del cliente
 function viewClientDetails(sessionId) {
-    // En una implementación real, esto redireccionaría a una página de detalles o abriría un modal
+    // Redirigir a la página de detalles del cliente
     console.log(`Ver detalles del cliente: ${sessionId}`);
-    
-    // Simular la apertura de una página de detalles
     window.location.href = `/client-details.html?id=${sessionId}`;
 }
 
@@ -758,4 +765,116 @@ function requestScreenshot(sessionId) {
         console.error('Error solicitando captura:', error);
         addRecentActivity('warning', 'Error al solicitar captura de pantalla');
     });
+}
+
+// Obtener nombre del cliente por ID
+function getClientName(sessionId) {
+    const client = clients.find(c => c.sessionId === sessionId);
+    return client ? client.participantId : 'Cliente desconocido';
+}
+
+// Enviar advertencia a un cliente
+function sendWarningToClient(sessionId = selectedClientId) {
+    if (!sessionId) return;
+    
+    // Implementar lógica para enviar advertencia
+    console.log(`Enviando advertencia al cliente: ${sessionId}`);
+    
+    // Mostrar en actividad reciente
+    addRecentActivity('warning', `Advertencia enviada a ${getClientName(sessionId)}`);
+    
+    // En una implementación real, se enviaría al servidor
+    // fetch('/api/send-warning/' + sessionId, { method: 'POST' })
+}
+
+// Confirmar descalificación
+function confirmDisqualification(sessionId = selectedClientId) {
+    if (!sessionId) return;
+    
+    if (confirm(`¿Está seguro que desea descalificar a ${getClientName(sessionId)}? Esta acción no se puede deshacer.`)) {
+        disqualifyClient(sessionId);
+    }
+}
+
+// Descalificar a un cliente
+function disqualifyClient(sessionId = selectedClientId) {
+    if (!sessionId) return;
+    
+    // Implementar lógica para descalificar
+    console.log(`Descalificando al cliente: ${sessionId}`);
+    
+    // Mostrar en actividad reciente
+    addRecentActivity('critical', `${getClientName(sessionId)} ha sido descalificado`);
+    
+    // En una implementación real, se enviaría al servidor
+    // fetch('/api/disqualify/' + sessionId, { method: 'POST' })
+}
+
+// Actualizar gráficos para la pestaña actual
+function updateChartsForTab(tabId) {
+    // Implementar actualización de gráficos específicos para cada pestaña
+    console.log(`Actualizando gráficos para pestaña: ${tabId}`);
+    
+    // Por ahora solo actualizamos el gráfico de confianza que es común
+    if (charts.trustScore) {
+        charts.trustScore.updateSeries([{
+            data: generateRandomData(20, 60, 100)
+        }]);
+    }
+}
+
+// Simular cambios en la puntuación de confianza (demo)
+function simulateTrustScoreChanges() {
+    // Solo para demostración
+    if (clients.length > 0) {
+        // Seleccionar un cliente aleatorio
+        const randomIndex = Math.floor(Math.random() * clients.length);
+        const client = clients[randomIndex];
+        
+        // Cambiar su puntuación entre -5 y +3
+        const change = Math.floor(Math.random() * 9) - 5;
+        let newScore = client.trustScore + change;
+        
+        // Asegurar que esté entre 0 y 100
+        newScore = Math.max(0, Math.min(100, newScore));
+        
+        if (newScore !== client.trustScore) {
+            clients[randomIndex].trustScore = newScore;
+            
+            // Actualizar UI
+            renderClientTable();
+            
+            // Agregar actividad
+            if (change < 0) {
+                addRecentActivity('warning', `La puntuación de confianza de ${client.participantId} ha disminuido a ${newScore}%`);
+            } else {
+                addRecentActivity('info', `La puntuación de confianza de ${client.participantId} ha aumentado a ${newScore}%`);
+            }
+        }
+    }
+}
+
+// Simular actividad en tiempo real (demo)
+function simulateRealtimeActivity() {
+    // Solo para demostración
+    if (clients.length > 0) {
+        // Seleccionar un cliente aleatorio
+        const randomIndex = Math.floor(Math.random() * clients.length);
+        const client = clients[randomIndex];
+        
+        // Tipos de actividades de ejemplo
+        const activities = [
+            { type: 'info', message: 'Actualización de antivirus recibida' },
+            { type: 'info', message: 'Conexión a servidor de juego verificada' },
+            { type: 'warning', message: 'Rendimiento del sistema fluctuante' },
+            { type: 'warning', message: 'Intento de ejecución de proceso no autorizado' },
+            { type: 'info', message: 'Captura de pantalla programada completada' }
+        ];
+        
+        // Seleccionar actividad aleatoria
+        const activity = activities[Math.floor(Math.random() * activities.length)];
+        
+        // Agregar actividad
+        addRecentActivity(activity.type, activity.message, client.participantId);
+    }
 }
