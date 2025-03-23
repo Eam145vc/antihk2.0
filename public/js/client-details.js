@@ -1,9 +1,33 @@
 // client-details.js - Script para la página de detalles del cliente
 
+// Esperar a que el DOM esté completamente cargado
+document.addEventListener('DOMContentLoaded', function() {
+    console.log("DOM cargado. Iniciando...");
+    
+    // Obtener ID del cliente de la URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const sessionId = urlParams.get('id');
+    
+    if (!sessionId) {
+        showError('No se proporcionó un ID de cliente válido');
+        return;
+    }
+    
+    console.log("SessionID obtenido:", sessionId);
+    
+    // Inicializar Socket.io
+    initializeSocketIO(sessionId);
+    
+    // Configurar eventos de botones
+    setupButtonListeners(sessionId);
+    
+    // Cargar datos del cliente
+    fetchClientData(sessionId);
+});
+
 // Variables globales
 let socket;
 let clientData = null;
-let sessionId = null;
 let charts = {};
 let trustScoreHistory = [];
 
@@ -14,24 +38,9 @@ const RISK_LEVELS = {
     HIGH: { threshold: 0, color: '#dc3545', text: 'CRÍTICO' }
 };
 
-// Inicialización
-document.addEventListener('DOMContentLoaded', () => {
-    // Obtener ID del cliente de la URL
-    const urlParams = new URLSearchParams(window.location.search);
-    sessionId = urlParams.get('id');
-    
-    if (!sessionId) {
-        showError('No se proporcionó un ID de cliente válido');
-        return;
-    }
-    
-    initializeSocket();
-    setupEventListeners();
-    loadClientData();
-});
-
-// Inicializar conexión Socket.io
-function initializeSocket() {
+// Inicializar Socket.io
+function initializeSocketIO(sessionId) {
+    console.log("Inicializando Socket.io");
     // Conectar al servidor Socket.io
     const serverUrl = window.location.origin;
     socket = io(serverUrl);
@@ -75,8 +84,10 @@ function initializeSocket() {
     });
 }
 
-// Configurar event listeners
-function setupEventListeners() {
+// Configurar listeners de botones
+function setupButtonListeners(sessionId) {
+    console.log("Configurando event listeners para botones");
+    
     // Botón de volver atrás
     const backBtn = document.getElementById('backBtn');
     if (backBtn) {
@@ -88,25 +99,33 @@ function setupEventListeners() {
     // Botón de actualizar
     const refreshBtn = document.getElementById('refreshBtn');
     if (refreshBtn) {
-        refreshBtn.addEventListener('click', loadClientData);
+        refreshBtn.addEventListener('click', () => {
+            fetchClientData(sessionId);
+        });
     }
     
     // Botón de captura de pantalla
     const screenshotBtn = document.getElementById('screenshotBtn');
     if (screenshotBtn) {
-        screenshotBtn.addEventListener('click', requestScreenshot);
+        screenshotBtn.addEventListener('click', () => {
+            requestScreenshot(sessionId);
+        });
     }
     
     // Botón de advertencia
     const warnBtn = document.getElementById('warnBtn');
     if (warnBtn) {
-        warnBtn.addEventListener('click', sendWarning);
+        warnBtn.addEventListener('click', () => {
+            sendWarning(sessionId);
+        });
     }
     
     // Botón de descalificación
     const disqualifyBtn = document.getElementById('disqualifyBtn');
     if (disqualifyBtn) {
-        disqualifyBtn.addEventListener('click', confirmDisqualification);
+        disqualifyBtn.addEventListener('click', () => {
+            confirmDisqualification(sessionId);
+        });
     }
     
     // Manejo de pestañas para activar gráficos cuando se muestran
@@ -121,7 +140,9 @@ function setupEventListeners() {
 }
 
 // Cargar datos del cliente
-function loadClientData() {
+function fetchClientData(sessionId) {
+    console.log("Cargando datos del cliente:", sessionId);
+    
     // Mostrar loader
     document.getElementById('loadingContainer').style.display = 'block';
     document.getElementById('clientDetails').style.display = 'none';
@@ -130,14 +151,15 @@ function loadClientData() {
     // Realizar la solicitud AJAX
     fetch(`/api/client/${sessionId}`)
         .then(response => {
+            console.log("Respuesta recibida:", response.status);
             if (!response.ok) {
                 throw new Error(`Error ${response.status}: ${response.statusText}`);
             }
             return response.json();
         })
         .then(data => {
+            console.log("Datos recibidos:", data);
             clientData = data;
-            console.log("Datos del cliente recibidos:", clientData);
             
             // Ocultar loader y mostrar detalles
             document.getElementById('loadingContainer').style.display = 'none';
@@ -150,10 +172,12 @@ function loadClientData() {
             initializeCharts();
             
             // Unirse al canal del cliente para recibir actualizaciones en tiempo real
-            socket.emit('join-channel', clientData.channel);
-            
-            // Cargar alertas relacionadas con este cliente
-            loadClientAlerts();
+            if (data.channel) {
+                socket.emit('join-channel', data.channel);
+                
+                // Cargar alertas relacionadas con este cliente
+                loadClientAlerts(sessionId, data.channel);
+            }
         })
         .catch(error => {
             console.error('Error cargando datos del cliente:', error);
@@ -168,38 +192,60 @@ function loadClientData() {
 
 // Actualizar la interfaz de usuario con los datos del cliente
 function updateClientUI() {
+    console.log("Actualizando UI con datos del cliente");
+    
     if (!clientData) {
         console.error("No hay datos de cliente para actualizar la UI");
         return;
     }
     
-    // Información básica del cliente
-    document.getElementById('clientName').textContent = clientData.participantId || 'Cliente sin nombre';
-    document.getElementById('clientSessionId').textContent = clientData.sessionId || 'Sin ID';
-    document.getElementById('clientChannel').textContent = clientData.channel || 'Sin canal';
-    
-    // Formatear fecha de última actualización
-    const lastUpdate = clientData.lastUpdate ? new Date(clientData.lastUpdate) : new Date();
-    document.getElementById('clientLastUpdate').textContent = lastUpdate.toLocaleString();
-    
-    // Puntuación de confianza
-    updateTrustScore(clientData.trustScore || 10);
-    
-    // Información del sistema
-    updateSystemInfo();
-    
-    // Estado de seguridad
-    updateSecurityStatus();
-    
-    // Actualizar actividad reciente
-    updateRecentActivity();
-    
-    // Actualizar gráficos
-    updateCharts();
+    try {
+        // Información básica del cliente
+        const clientNameElem = document.getElementById('clientName');
+        if (clientNameElem) {
+            clientNameElem.textContent = clientData.participantId || 'Cliente sin nombre';
+        }
+        
+        const clientSessionIdElem = document.getElementById('clientSessionId');
+        if (clientSessionIdElem) {
+            clientSessionIdElem.textContent = clientData.sessionId || 'Sin ID';
+        }
+        
+        const clientChannelElem = document.getElementById('clientChannel');
+        if (clientChannelElem) {
+            clientChannelElem.textContent = clientData.channel || 'Sin canal';
+        }
+        
+        // Formatear fecha de última actualización
+        const lastUpdate = clientData.lastUpdate ? new Date(clientData.lastUpdate) : new Date();
+        const clientLastUpdateElem = document.getElementById('clientLastUpdate');
+        if (clientLastUpdateElem) {
+            clientLastUpdateElem.textContent = lastUpdate.toLocaleString();
+        }
+        
+        // Puntuación de confianza
+        updateTrustScore(clientData.trustScore || 10);
+        
+        // Información del sistema
+        updateSystemInfo();
+        
+        // Estado de seguridad
+        updateSecurityStatus();
+        
+        // Actualizar actividad reciente
+        updateRecentActivity();
+        
+        // Actualizar gráficos
+        updateCharts();
+    } catch (error) {
+        console.error("Error al actualizar la UI:", error);
+    }
 }
 
 // Actualizar puntuación de confianza
 function updateTrustScore(score) {
+    console.log("Actualizando puntuación de confianza:", score);
+    
     const trustScoreValue = document.getElementById('trustScoreValue');
     const trustScoreStatus = document.getElementById('trustScoreStatus');
     
@@ -246,40 +292,40 @@ function updateSystemInfo() {
     const sysInfo = clientData.systemInfo;
     
     // Sistema operativo
-    if (document.getElementById('osInfo')) {
-        document.getElementById('osInfo').textContent = 
-            `${sysInfo.platform || 'Desconocido'} (${sysInfo.arch || ''})`;
+    const osInfoElem = document.getElementById('osInfo');
+    if (osInfoElem) {
+        osInfoElem.textContent = `${sysInfo.platform || 'Desconocido'} (${sysInfo.arch || ''})`;
     }
     
     // Información de CPU
-    if (document.getElementById('cpuInfo') && sysInfo.cpus && sysInfo.cpus.length > 0) {
-        document.getElementById('cpuInfo').textContent = 
-            Array.isArray(sysInfo.cpus) ? sysInfo.cpus[0] : 'Desconocido';
+    const cpuInfoElem = document.getElementById('cpuInfo');
+    if (cpuInfoElem && sysInfo.cpus && sysInfo.cpus.length > 0) {
+        cpuInfoElem.textContent = Array.isArray(sysInfo.cpus) ? sysInfo.cpus[0] : 'Desconocido';
     }
     
     // Información de RAM
-    if (document.getElementById('ramInfo') && sysInfo.totalMem) {
+    const ramInfoElem = document.getElementById('ramInfo');
+    if (ramInfoElem && sysInfo.totalMem) {
         const totalGB = (sysInfo.totalMem / (1024 * 1024 * 1024)).toFixed(2);
         const freeGB = (sysInfo.freeMem / (1024 * 1024 * 1024)).toFixed(2);
-        document.getElementById('ramInfo').textContent = 
-            `${freeGB} GB / ${totalGB} GB`;
+        ramInfoElem.textContent = `${freeGB} GB / ${totalGB} GB`;
     }
     
     // Hostname
-    if (document.getElementById('hostnameInfo')) {
-        document.getElementById('hostnameInfo').textContent = 
-            sysInfo.hostname || 'Desconocido';
+    const hostnameInfoElem = document.getElementById('hostnameInfo');
+    if (hostnameInfoElem) {
+        hostnameInfoElem.textContent = sysInfo.hostname || 'Desconocido';
     }
     
     // Tiempo de actividad
-    if (document.getElementById('uptimeInfo') && sysInfo.uptime) {
+    const uptimeInfoElem = document.getElementById('uptimeInfo');
+    if (uptimeInfoElem && sysInfo.uptime) {
         const uptime = sysInfo.uptime;
         const days = Math.floor(uptime / 86400);
         const hours = Math.floor((uptime % 86400) / 3600);
         const minutes = Math.floor((uptime % 3600) / 60);
         
-        document.getElementById('uptimeInfo').textContent = 
-            `${days}d ${hours}h ${minutes}m`;
+        uptimeInfoElem.textContent = `${days}d ${hours}h ${minutes}m`;
     }
 }
 
@@ -288,51 +334,52 @@ function updateSecurityStatus() {
     if (!clientData) return;
     
     // Estado del antivirus
-    if (document.getElementById('antivirusStatus') && clientData.antivirusStatus) {
+    const antivirusStatusElem = document.getElementById('antivirusStatus');
+    if (antivirusStatusElem && clientData.antivirusStatus) {
         const av = clientData.antivirusStatus;
-        document.getElementById('antivirusStatus').textContent = 
-            av.name ? `${av.name} (${av.enabled ? 'Activo' : 'Inactivo'})` : 'No detectado';
+        antivirusStatusElem.textContent = av.name ? `${av.name} (${av.enabled ? 'Activo' : 'Inactivo'})` : 'No detectado';
         
         if (av.enabled) {
-            document.getElementById('antivirusStatus').classList.add('text-success');
-            document.getElementById('antivirusStatus').classList.remove('text-danger');
+            antivirusStatusElem.classList.add('text-success');
+            antivirusStatusElem.classList.remove('text-danger');
         } else {
-            document.getElementById('antivirusStatus').classList.add('text-danger');
-            document.getElementById('antivirusStatus').classList.remove('text-success');
+            antivirusStatusElem.classList.add('text-danger');
+            antivirusStatusElem.classList.remove('text-success');
         }
     }
     
     // Protección en tiempo real
-    if (document.getElementById('realtimeProtection') && clientData.antivirusStatus) {
+    const realtimeProtectionElem = document.getElementById('realtimeProtection');
+    if (realtimeProtectionElem && clientData.antivirusStatus) {
         const av = clientData.antivirusStatus;
-        document.getElementById('realtimeProtection').textContent = 
-            av.realTimeProtection ? 'Activa' : 'Inactiva';
+        realtimeProtectionElem.textContent = av.realTimeProtection ? 'Activa' : 'Inactiva';
         
         if (av.realTimeProtection) {
-            document.getElementById('realtimeProtection').classList.add('text-success');
-            document.getElementById('realtimeProtection').classList.remove('text-danger');
+            realtimeProtectionElem.classList.add('text-success');
+            realtimeProtectionElem.classList.remove('text-danger');
         } else {
-            document.getElementById('realtimeProtection').classList.add('text-danger');
-            document.getElementById('realtimeProtection').classList.remove('text-success');
+            realtimeProtectionElem.classList.add('text-danger');
+            realtimeProtectionElem.classList.remove('text-success');
         }
     }
     
     // Entorno virtualizado
-    if (document.getElementById('virtualEnvironment')) {
-        document.getElementById('virtualEnvironment').textContent = 
-            clientData.virtualEnvironmentDetection ? 'Detectado' : 'No detectado';
+    const virtualEnvironmentElem = document.getElementById('virtualEnvironment');
+    if (virtualEnvironmentElem) {
+        virtualEnvironmentElem.textContent = clientData.virtualEnvironmentDetection ? 'Detectado' : 'No detectado';
         
         if (clientData.virtualEnvironmentDetection) {
-            document.getElementById('virtualEnvironment').classList.add('text-danger');
-            document.getElementById('virtualEnvironment').classList.remove('text-success');
+            virtualEnvironmentElem.classList.add('text-danger');
+            virtualEnvironmentElem.classList.remove('text-success');
         } else {
-            document.getElementById('virtualEnvironment').classList.add('text-success');
-            document.getElementById('virtualEnvironment').classList.remove('text-danger');
+            virtualEnvironmentElem.classList.add('text-success');
+            virtualEnvironmentElem.classList.remove('text-danger');
         }
     }
     
     // Integridad de archivos
-    if (document.getElementById('fileIntegrity')) {
+    const fileIntegrityElem = document.getElementById('fileIntegrity');
+    if (fileIntegrityElem) {
         const integrity = clientData.fileIntegrityStatus;
         let status = 'No verificado';
         let isOk = false;
@@ -347,229 +394,238 @@ function updateSecurityStatus() {
             }
         }
         
-        document.getElementById('fileIntegrity').textContent = status;
+        fileIntegrityElem.textContent = status;
         
         if (isOk) {
-            document.getElementById('fileIntegrity').classList.add('text-success');
-            document.getElementById('fileIntegrity').classList.remove('text-danger');
+            fileIntegrityElem.classList.add('text-success');
+            fileIntegrityElem.classList.remove('text-danger');
         } else {
-            document.getElementById('fileIntegrity').classList.add('text-danger');
-            document.getElementById('fileIntegrity').classList.remove('text-success');
+            fileIntegrityElem.classList.add('text-danger');
+            fileIntegrityElem.classList.remove('text-success');
         }
     }
 }
 
 // Inicializar gráficos
 function initializeCharts() {
-    // Gráfico de puntuación de confianza
-    const trustScoreOptions = {
-        series: [{
-            name: 'Puntuación',
-            data: trustScoreHistory.length > 0 ? trustScoreHistory : [clientData.trustScore || 10]
-        }],
-        chart: {
-            height: 100,
-            type: 'area',
-            toolbar: {
-                show: false
-            },
-            sparkline: {
-                enabled: true
-            },
-        },
-        colors: ['#ffffff'],
-        fill: {
-            type: 'gradient',
-            gradient: {
-                shadeIntensity: 1,
-                opacityFrom: 0.7,
-                opacityTo: 0.3,
-                stops: [0, 100]
-            }
-        },
-        stroke: {
-            curve: 'smooth',
-            width: 2,
-        },
-        tooltip: {
-            theme: 'dark',
-        },
-        grid: {
-            show: false
-        },
-        xaxis: {
-            labels: {
-                show: false
-            },
-            axisBorder: {
-                show: false
-            },
-            axisTicks: {
-                show: false
-            }
-        },
-        yaxis: {
-            min: 0,
-            max: 100,
-            labels: {
-                show: false
-            }
-        }
-    };
+    console.log("Inicializando gráficos");
     
-    if (document.querySelector('#trustScoreChart')) {
-        charts.trustScore = new ApexCharts(document.querySelector('#trustScoreChart'), trustScoreOptions);
-        charts.trustScore.render();
-    }
-    
-    // Gráfico de uso de CPU
-    const cpuOptions = {
-        series: [{
-            name: 'CPU',
-            data: generateRandomData(20, 10, 90) // Datos de ejemplo
-        }],
-        chart: {
-            height: 200,
-            type: 'area',
-            toolbar: {
+    try {
+        // Gráfico de puntuación de confianza
+        const trustScoreOptions = {
+            series: [{
+                name: 'Puntuación',
+                data: trustScoreHistory.length > 0 ? trustScoreHistory : [clientData.trustScore || 10]
+            }],
+            chart: {
+                height: 100,
+                type: 'area',
+                toolbar: {
+                    show: false
+                },
+                sparkline: {
+                    enabled: true
+                },
+            },
+            colors: ['#ffffff'],
+            fill: {
+                type: 'gradient',
+                gradient: {
+                    shadeIntensity: 1,
+                    opacityFrom: 0.7,
+                    opacityTo: 0.3,
+                    stops: [0, 100]
+                }
+            },
+            stroke: {
+                curve: 'smooth',
+                width: 2,
+            },
+            tooltip: {
+                theme: 'dark',
+            },
+            grid: {
                 show: false
             },
-            animations: {
-                enabled: true
-            }
-        },
-        colors: ['#0d6efd'],
-        fill: {
-            type: 'gradient',
-            gradient: {
-                shadeIntensity: 1,
-                opacityFrom: 0.7,
-                opacityTo: 0.3,
-                stops: [0, 90, 100]
-            }
-        },
-        stroke: {
-            curve: 'smooth',
-            width: 2,
-        },
-        tooltip: {
-            y: {
-                formatter: (val) => `${val}%`
-            }
-        },
-        grid: {
-            borderColor: '#e0e0e0',
-            strokeDashArray: 5,
             xaxis: {
-                lines: {
-                    show: true
+                labels: {
+                    show: false
+                },
+                axisBorder: {
+                    show: false
+                },
+                axisTicks: {
+                    show: false
                 }
             },
             yaxis: {
-                lines: {
-                    show: true
+                min: 0,
+                max: 100,
+                labels: {
+                    show: false
+                }
+            }
+        };
+        
+        const trustScoreChartElem = document.querySelector('#trustScoreChart');
+        if (trustScoreChartElem) {
+            charts.trustScore = new ApexCharts(trustScoreChartElem, trustScoreOptions);
+            charts.trustScore.render();
+        }
+        
+        // Gráfico de uso de CPU
+        const cpuOptions = {
+            series: [{
+                name: 'CPU',
+                data: generateRandomData(20, 10, 90) // Datos de ejemplo
+            }],
+            chart: {
+                height: 200,
+                type: 'area',
+                toolbar: {
+                    show: false
+                },
+                animations: {
+                    enabled: true
                 }
             },
-            padding: {
-                top: 0,
-                right: 0,
-                bottom: 0,
-                left: 0
+            colors: ['#0d6efd'],
+            fill: {
+                type: 'gradient',
+                gradient: {
+                    shadeIntensity: 1,
+                    opacityFrom: 0.7,
+                    opacityTo: 0.3,
+                    stops: [0, 90, 100]
+                }
             },
-        },
-        xaxis: {
-            categories: Array.from({ length: 20 }, (_, i) => i + 1),
-            labels: {
-                show: false
-            }
-        },
-        yaxis: {
-            min: 0,
-            max: 100,
-            labels: {
-                formatter: (val) => `${val}%`
-            }
-        }
-    };
-    
-    if (document.querySelector('#cpuUsageChart')) {
-        charts.cpu = new ApexCharts(document.querySelector('#cpuUsageChart'), cpuOptions);
-        charts.cpu.render();
-    }
-    
-    // Gráfico de uso de memoria
-    const memoryOptions = {
-        series: [{
-            name: 'RAM',
-            data: generateRandomData(20, 20, 80) // Datos de ejemplo
-        }],
-        chart: {
-            height: 200,
-            type: 'area',
-            toolbar: {
-                show: false
+            stroke: {
+                curve: 'smooth',
+                width: 2,
             },
-            animations: {
-                enabled: true
-            }
-        },
-        colors: ['#0dcaf0'],
-        fill: {
-            type: 'gradient',
-            gradient: {
-                shadeIntensity: 1,
-                opacityFrom: 0.7,
-                opacityTo: 0.3,
-                stops: [0, 90, 100]
-            }
-        },
-        stroke: {
-            curve: 'smooth',
-            width: 2,
-        },
-        tooltip: {
-            y: {
-                formatter: (val) => `${val}%`
-            }
-        },
-        grid: {
-            borderColor: '#e0e0e0',
-            strokeDashArray: 5,
+            tooltip: {
+                y: {
+                    formatter: (val) => `${val}%`
+                }
+            },
+            grid: {
+                borderColor: '#e0e0e0',
+                strokeDashArray: 5,
+                xaxis: {
+                    lines: {
+                        show: true
+                    }
+                },
+                yaxis: {
+                    lines: {
+                        show: true
+                    }
+                },
+                padding: {
+                    top: 0,
+                    right: 0,
+                    bottom: 0,
+                    left: 0
+                },
+            },
             xaxis: {
-                lines: {
-                    show: true
+                categories: Array.from({ length: 20 }, (_, i) => i + 1),
+                labels: {
+                    show: false
                 }
             },
             yaxis: {
-                lines: {
-                    show: true
+                min: 0,
+                max: 100,
+                labels: {
+                    formatter: (val) => `${val}%`
+                }
+            }
+        };
+        
+        const cpuChartElem = document.querySelector('#cpuUsageChart');
+        if (cpuChartElem) {
+            charts.cpu = new ApexCharts(cpuChartElem, cpuOptions);
+            charts.cpu.render();
+        }
+        
+        // Gráfico de uso de memoria
+        const memoryOptions = {
+            series: [{
+                name: 'RAM',
+                data: generateRandomData(20, 20, 80) // Datos de ejemplo
+            }],
+            chart: {
+                height: 200,
+                type: 'area',
+                toolbar: {
+                    show: false
+                },
+                animations: {
+                    enabled: true
                 }
             },
-            padding: {
-                top: 0,
-                right: 0,
-                bottom: 0,
-                left: 0
+            colors: ['#0dcaf0'],
+            fill: {
+                type: 'gradient',
+                gradient: {
+                    shadeIntensity: 1,
+                    opacityFrom: 0.7,
+                    opacityTo: 0.3,
+                    stops: [0, 90, 100]
+                }
             },
-        },
-        xaxis: {
-            categories: Array.from({ length: 20 }, (_, i) => i + 1),
-            labels: {
-                show: false
+            stroke: {
+                curve: 'smooth',
+                width: 2,
+            },
+            tooltip: {
+                y: {
+                    formatter: (val) => `${val}%`
+                }
+            },
+            grid: {
+                borderColor: '#e0e0e0',
+                strokeDashArray: 5,
+                xaxis: {
+                    lines: {
+                        show: true
+                    }
+                },
+                yaxis: {
+                    lines: {
+                        show: true
+                    }
+                },
+                padding: {
+                    top: 0,
+                    right: 0,
+                    bottom: 0,
+                    left: 0
+                },
+            },
+            xaxis: {
+                categories: Array.from({ length: 20 }, (_, i) => i + 1),
+                labels: {
+                    show: false
+                }
+            },
+            yaxis: {
+                min: 0,
+                max: 100,
+                labels: {
+                    formatter: (val) => `${val}%`
+                }
             }
-        },
-        yaxis: {
-            min: 0,
-            max: 100,
-            labels: {
-                formatter: (val) => `${val}%`
-            }
+        };
+        
+        const memoryChartElem = document.querySelector('#memoryUsageChart');
+        if (memoryChartElem) {
+            charts.memory = new ApexCharts(memoryChartElem, memoryOptions);
+            charts.memory.render();
         }
-    };
-    
-    if (document.querySelector('#memoryUsageChart')) {
-        charts.memory = new ApexCharts(document.querySelector('#memoryUsageChart'), memoryOptions);
-        charts.memory.render();
+    } catch (error) {
+        console.error("Error inicializando gráficos:", error);
     }
 }
 
@@ -670,19 +726,24 @@ function addActivity(severity, message, timestamp = new Date()) {
 }
 
 // Cargar alertas del cliente
-function loadClientAlerts() {
-    if (!clientData || !clientData.channel) return;
+function loadClientAlerts(sessionId, channel) {
+    console.log("Cargando alertas para el cliente:", sessionId, "en canal:", channel);
+    
+    if (!sessionId || !channel) return;
     
     // Solicitar alertas específicas de este cliente
-    fetch(`/api/alerts/${clientData.channel}?limit=50&sessionId=${sessionId}`)
+    fetch(`/api/alerts/${channel}?limit=50&sessionId=${sessionId}`)
         .then(response => response.json())
         .then(data => {
             if (data.alerts && data.alerts.length > 0) {
+                console.log("Alertas recibidas:", data.alerts.length);
                 // Actualizar pestaña de alertas
                 updateAlertsTab(data.alerts);
                 
                 // Actualizar contador
                 updateAlertCount(data.alerts.length);
+            } else {
+                console.log("No se encontraron alertas para este cliente");
             }
         })
         .catch(error => {
@@ -763,7 +824,9 @@ function updateAlertCount(count) {
 }
 
 // Solicitar captura de pantalla
-function requestScreenshot() {
+function requestScreenshot(sessionId) {
+    console.log("Solicitando captura de pantalla para:", sessionId);
+    
     fetch(`/api/request-screenshot/${sessionId}`, {
         method: 'POST',
         headers: {
@@ -852,7 +915,9 @@ function showScreenshot(imageData, timestamp) {
 }
 
 // Enviar advertencia al cliente
-function sendWarning() {
+function sendWarning(sessionId) {
+    console.log("Enviando advertencia al cliente:", sessionId);
+    
     const message = prompt('Escriba el mensaje de advertencia para el jugador:');
     if (!message) return;
     
@@ -879,7 +944,9 @@ function sendWarning() {
 }
 
 // Confirmar descalificación
-function confirmDisqualification() {
+function confirmDisqualification(sessionId) {
+    console.log("Confirmando descalificación para cliente:", sessionId);
+    
     const reason = prompt('Motivo de la descalificación:');
     if (!reason) return;
     
