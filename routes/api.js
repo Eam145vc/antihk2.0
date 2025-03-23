@@ -164,12 +164,17 @@ router.get('/client/:sessionId', async (req, res) => {
 router.get('/alerts/:channel', async (req, res) => {
   try {
     const { channel } = req.params;
-    const { limit = 50, offset = 0, severity } = req.query;
+    const { limit = 50, offset = 0, severity, sessionId } = req.query;
     
-    logger.info(`Solicitud de alertas para el canal: ${channel}`);
+    logger.info(`Solicitud de alertas para el canal: ${channel}${sessionId ? `, cliente: ${sessionId}` : ''}`);
     
     // Construir consulta base
     let query = { channel };
+    
+    // Filtrar por sessionId si se proporciona
+    if (sessionId) {
+      query.sessionId = sessionId;
+    }
     
     // Filtrar por severidad si se proporciona
     if (severity) {
@@ -337,6 +342,109 @@ router.get('/stats/:channel', async (req, res) => {
     });
   } catch (error) {
     logger.error('Error obteniendo estadísticas:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Enviar advertencia a un cliente
+router.post('/send-warning/:sessionId', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { message } = req.body;
+    
+    // Verificar que existe el cliente
+    const client = await Client.findOne({ sessionId });
+    if (!client) {
+      return res.status(404).json({ success: false, error: 'Cliente no encontrado' });
+    }
+    
+    logger.info(`Enviando advertencia a cliente ${sessionId}: "${message}"`);
+    
+    // Emitir evento para enviar la advertencia
+    const io = req.app.get('io');
+    io.to(client.channel).emit('send-warning', {
+      sessionId,
+      message,
+      timestamp: new Date()
+    });
+    
+    // Registrar la advertencia como una alerta
+    const alert = new Alert({
+      sessionId,
+      participantId: client.participantId,
+      channel: client.channel,
+      timestamp: new Date(),
+      message: `[ADVERTENCIA DEL JUEZ]: ${message}`,
+      severity: 'warning',
+      eventType: 'system',
+      handled: true,
+      handledBy: 'Sistema (advertencia del juez)'
+    });
+    
+    await alert.save();
+    
+    res.status(200).json({ success: true, message: 'Advertencia enviada correctamente' });
+  } catch (error) {
+    logger.error('Error enviando advertencia:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Descalificar a un cliente
+router.post('/disqualify/:sessionId', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { reason } = req.body;
+    
+    // Verificar que existe el cliente
+    const client = await Client.findOne({ sessionId });
+    if (!client) {
+      return res.status(404).json({ success: false, error: 'Cliente no encontrado' });
+    }
+    
+    logger.info(`Descalificando cliente ${sessionId}: "${reason}"`);
+    
+    // Actualizar el estado del cliente
+    await Client.findOneAndUpdate(
+      { sessionId },
+      { 
+        trustScore: 0, // Establecer puntuación de confianza a 0
+        $push: { 
+          alerts: { 
+            timestamp: new Date(), 
+            message: `[DESCALIFICADO]: ${reason}`,
+            severity: 'critical'
+          } 
+        } 
+      }
+    );
+    
+    // Emitir evento para notificar la descalificación
+    const io = req.app.get('io');
+    io.to(client.channel).emit('disqualify', {
+      sessionId,
+      reason,
+      timestamp: new Date()
+    });
+    
+    // Registrar la descalificación como una alerta
+    const alert = new Alert({
+      sessionId,
+      participantId: client.participantId,
+      channel: client.channel,
+      timestamp: new Date(),
+      message: `[DESCALIFICADO]: ${reason}`,
+      severity: 'critical',
+      eventType: 'system',
+      handled: true,
+      handledBy: 'Sistema (descalificación)'
+    });
+    
+    await alert.save();
+    
+    res.status(200).json({ success: true, message: 'Cliente descalificado correctamente' });
+  } catch (error) {
+    logger.error('Error descalificando cliente:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
