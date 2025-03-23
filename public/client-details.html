@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anti-Cheat - Detalles del Jugador</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/apexcharts@3.35.3/dist/apexcharts.min.css">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-shield-alt me-2"></i>Anti-Cheat Dashboard
+            </a>
+            <div class="d-flex">
+                <button id="backBtn" class="btn btn-outline-light me-2">
+                    <i class="fas fa-arrow-left me-2"></i>Volver
+                </button>
+                <button id="refreshBtn" class="btn btn-outline-light">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid p-3">
+        <div id="loadingContainer" class="text-center p-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+            <p class="mt-2">Cargando datos del jugador...</p>
+        </div>
+        
+        <div id="clientDetails" style="display: none;">
+            <!-- Encabezado con información del jugador -->
+            <div class="row mb-3">
+                <div class="col-md-8">
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center">
+                                <div class="client-avatar me-4">
+                                    <div class="client-avatar-placeholder">
+                                        <i class="fas fa-user"></i>
+                                    </div>
+                                </div>
+                                <div class="client-info flex-grow-1">
+                                    <h2 id="clientName">Cargando...</h2>
+                                    <div class="client-meta d-flex flex-wrap">
+                                        <div class="me-4 mb-2">
+                                            <i class="fas fa-fingerprint me-2"></i><span id="clientSessionId">Cargando...</span>
+                                        </div>
+                                        <div class="me-4 mb-2">
+                                            <i class="fas fa-tag me-2"></i><span id="clientChannel">Cargando...</span>
+                                        </div>
+                                        <div class="me-4 mb-2">
+                                            <i class="fas fa-calendar me-2"></i><span id="clientLastUpdate">Cargando...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="client-actions">
+                                    <div class="btn-group">
+                                        <button id="screenshotBtn" class="btn btn-primary">
+                                            <i class="fas fa-camera me-2"></i>Capturar Pantalla
+                                        </button>
+                                        <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false">
+                                            <span class="visually-hidden">Toggle Dropdown</span>
+                                        </button>
+                                        <ul class="dropdown-menu">
+                                            <li><a class="dropdown-item" href="#" id="warnBtn"><i class="fas fa-comment me-2"></i>Enviar Advertencia</a></li>
+                                            <li><hr class="dropdown-divider"></li>
+                                            <li><a class="dropdown-item text-danger" href="#" id="disqualifyBtn"><i class="fas fa-ban me-2"></i>Descalificar</a></li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card trust-score-card h-100">
+                        <div class="card-body p-0">
+                            <div class="row g-0 h-100">
+                                <div class="col-md-5 trust-score-value-container">
+                                    <span class="trust-score-label">Puntuación de Confianza</span>
+                                    <h2 class="trust-score-value" id="trustScoreValue">85</h2>
+                                    <span class="trust-score-status" id="trustScoreStatus">NORMAL</span>
+                                </div>
+                                <div class="col-md-7 trust-score-chart-container d-flex align-items-center">
+                                    <div id="trustScoreChart" class="w-100"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Pestañas para detalles del cliente -->
+            <ul class="nav nav-tabs" id="clientTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview-tab-pane" type="button" role="tab">
+                        <i class="fas fa-desktop me-2"></i>Resumen
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="alerts-tab" data-bs-toggle="tab" data-bs-target="#alerts-tab-pane" type="button" role="tab">
+                        <i class="fas fa-exclamation-triangle me-2"></i>Alertas
+                        <span class="alert-badge" id="alertsBadge">0</span>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="processes-tab" data-bs-toggle="tab" data-bs-target="#processes-tab-pane" type="button" role="tab">
+                        <i class="fas fa-tasks me-2"></i>Procesos
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="network-tab" data-bs-toggle="tab" data-bs-target="#network-tab-pane" type="button" role="tab">
+                        <i class="fas fa-network-wired me-2"></i>Red
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="devices-tab" data-bs-toggle="tab" data-bs-target="#devices-tab-pane" type="button" role="tab">
+                        <i class="fas fa-usb me-2"></i>Dispositivos
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="screenshots-tab" data-bs-toggle="tab" data-bs-target="#screenshots-tab-pane" type="button" role="tab">
+                        <i class="fas fa-images me-2"></i>Capturas
+                    </button>
+                </li>
+            </ul>
+            
+            <!-- Contenido de las pestañas -->
+            <div class="tab-content" id="clientTabsContent">
+                <!-- Pestaña de Resumen -->
+                <div class="tab-pane fade show active" id="overview-tab-pane" role="tabpanel" aria-labelledby="overview-tab" tabindex="0">
+                    <div class="row mt-3">
+                        <div class="col-md-4">
+                            <div class="card mb-3">
+                                <div class="card-header bg-secondary text-white">
+                                    <h5 class="m-0"><i class="fas fa-server me-2"></i>Información del Sistema</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div id="systemInfoContainer">
+                                        <div class="system-info-item">
+                                            <span class="info-label">Sistema Operativo:</span>
+                                            <span class="info-value" id="osInfo">Cargando...</span>
+                                        </div>
+                                        <div class="system-info-item">
+                                            <span class="info-label">Procesador:</span>
+                                            <span class="info-value" id="cpuInfo">Cargando...</span>
+                                        </div>
+                                        <div class="system-info-item">
+                                            <span class="info-label">Memoria RAM:</span>
+                                            <span class="info-value" id="ramInfo">Cargando...</span>
+                                        </div>
+                                        <div class="system-info-item">
+                                            <span class="info-label">Hostname:</span>
+                                            <span class="info-value" id="hostnameInfo">Cargando...</span>
+                                        </div>
+                                        <div class="system-info-item">
+                                            <span class="info-label">Tiempo de actividad:</span>
+                                            <span class="info-value" id="uptimeInfo">Cargando...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="card">
+                                <div class="card-header bg-primary text-white">
+                                    <h5 class="m-0"><i class="fas fa-shield-alt me-2"></i>Estado de Seguridad</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div id="securityStatusContainer">
+                                        <div class="security-status-item">
+                                            <span class="status-label">Antivirus:</span>
+                                            <span class="status-value" id="antivirusStatus">Cargando...</span>
+                                        </div>
+                                        <div class="security-status-item">
+                                            <span class="status-label">Protección en tiempo real:</span>
+                                            <span class="status-value" id="realtimeProtection">Cargando...</span>
+                                        </div>
+                                        <div class="security-status-item">
+                                            <span class="status-label">Entorno virtualizado:</span>
+                                            <span class="status-value" id="virtualEnvironment">Cargando...</span>
+                                        </div>
+                                        <div class="security-status-item">
+                                            <span class="status-label">Integridad de archivos:</span>
+                                            <span class="status-value" id="fileIntegrity">Cargando...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-8">
+                            <div class="card mb-3">
+                                <div class="card-header bg-info text-white">
+                                    <h5 class="m-0"><i class="fas fa-chart-line me-2"></i>Actividad Reciente</h5>
+                                </div>
+                                <div class="card-body p-0">
+                                    <div id="recentActivityContainer" class="activity-scroll">
+                                        <div class="text-center p-3 text-muted">
+                                            <i class="fas fa-info-circle me-2"></i>Cargando actividad...
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="card mb-3">
+                                        <div class="card-header bg-primary text-white">
+                                            <h5 class="m-0"><i class="fas fa-chart-bar me-2"></i>Uso de CPU</h5>
+                                        </div>
+                                        <div class="card-body">
+                                            <div id="cpuUsageChart" style="height: 200px;"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="card mb-3">
+                                        <div class="card-header bg-primary text-white">
+                                            <h5 class="m-0"><i class="fas fa-chart-bar me-2"></i>Uso de Memoria</h5>
+                                        </div>
+                                        <div class="card-body">
+                                            <div id="memoryUsageChart" style="height: 200px;"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Otras pestañas omitidas por brevedad -->
+                
+            </div>
+        </div>
+        
+        <div id="errorContainer" class="text-center p-5" style="display: none;">
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-circle me-2"></i>
+                <span id="errorMessage">Error cargando datos del cliente</span>
+            </div>
+            <button class="btn btn-primary" onclick="window.location.href='/'">
+                <i class="fas fa-home me-2"></i>Volver al Dashboard
+            </button>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.35.3/dist/apexcharts.min.js"></script>
+    <script src="js/client-details.js"></script>
+</body>
+</html>

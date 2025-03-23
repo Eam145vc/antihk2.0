@@ -1,0 +1,32 @@
+{
+    "name": "anticheat-server",
+    "version": "1.0.0",
+    "description": "Servidor para sistema AntiCheat de torneos de videojuegos",
+    "main": "app.js",
+    "scripts": {
+      "start": "node app.js",
+      "dev": "nodemon app.js",
+      "test": "mocha tests/*.js"
+    },
+    "dependencies": {
+      "body-parser": "^1.20.2",
+      "cors": "^2.8.5",
+      "dotenv": "^16.0.3",
+      "express": "^4.18.2",
+      "mongoose": "^7.0.3",
+      "socket.io": "^4.6.1",
+      "morgan": "^1.10.0",
+      "winston": "^3.8.2"
+    },
+    "devDependencies": {
+      "mocha": "^10.2.0",
+      "nodemon": "^2.0.22",
+      "chai": "^4.3.7",
+      "supertest": "^6.3.3"
+    },
+    "engines": {
+      "node": ">=14.0.0"
+    },
+    "author": "AntiCheat Team",
+    "license": "MIT"
+  }
