@@ -30,6 +30,10 @@ let socket;
 let clientData = null;
 let charts = {};
 let trustScoreHistory = [];
+let processData = [];
+let networkData = [];
+let deviceData = [];
+let screenshotData = [];
 
 // Constantes
 const RISK_LEVELS = {
@@ -67,6 +71,11 @@ function initializeSocketIO(sessionId) {
             
             // Actualizar contador de alertas
             updateAlertCount();
+            
+            // Actualizar pestaña de alertas si está visible
+            if (document.querySelector('#alerts-tab-pane.active')) {
+                loadClientAlerts(sessionId, clientData.channel);
+            }
         }
     });
     
@@ -81,6 +90,19 @@ function initializeSocketIO(sessionId) {
             // Agregar a la actividad reciente
             addActivity('info', 'Captura de pantalla recibida');
         }
+    });
+    
+    // Manejar conexión/reconexión
+    socket.on('connect', () => {
+        console.log('Conectado/Reconectado a Socket.io');
+        if (clientData && clientData.channel) {
+            socket.emit('join-channel', clientData.channel);
+        }
+    });
+    
+    // Manejar desconexión
+    socket.on('disconnect', () => {
+        console.log('Desconectado de Socket.io');
     });
 }
 
@@ -133,10 +155,560 @@ function setupButtonListeners(sessionId) {
     tabButtons.forEach(button => {
         button.addEventListener('shown.bs.tab', (e) => {
             const targetTab = e.target.getAttribute('data-bs-target');
-            // Actualizar gráficos específicos de cada pestaña
-            updateChartsForTab(targetTab);
+            console.log(`Tab seleccionada: ${targetTab}`);
+            
+            // Cargar datos específicos para cada pestaña
+            loadTabContent(targetTab, sessionId);
         });
     });
+}
+
+// Cargar contenido específico para cada pestaña
+function loadTabContent(tabId, sessionId) {
+    console.log(`Cargando contenido para pestaña: ${tabId}`);
+    
+    // Actualizar gráficos específicos para cada pestaña
+    updateChartsForTab(tabId);
+    
+    // Cargar datos específicos para cada pestaña
+    switch (tabId) {
+        case '#overview-tab-pane':
+            // El contenido ya se carga al cargar la página
+            break;
+        case '#alerts-tab-pane':
+            if (clientData && clientData.channel) {
+                loadClientAlerts(sessionId, clientData.channel);
+            }
+            break;
+        case '#processes-tab-pane':
+            loadProcessData(sessionId);
+            break;
+        case '#network-tab-pane':
+            loadNetworkData(sessionId);
+            break;
+        case '#devices-tab-pane':
+            loadDevicesData(sessionId);
+            break;
+        case '#screenshots-tab-pane':
+            loadScreenshots(sessionId);
+            break;
+    }
+}
+
+// Cargar datos de procesos
+function loadProcessData(sessionId) {
+    console.log("Cargando datos de procesos");
+    const container = document.querySelector('#processes-tab-pane');
+    if (!container) return;
+    
+    // Mostrar indicador de carga
+    container.innerHTML = `
+        <div class="text-center p-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+            <p class="mt-2">Cargando datos de procesos...</p>
+        </div>
+    `;
+    
+    // Si tenemos datos de procesos en el clientData, mostrarlos
+    if (clientData && clientData.systemData && clientData.systemData.processes) {
+        renderProcessData(clientData.systemData.processes);
+    } else {
+        // Simular datos para desarrollo/demo
+        setTimeout(() => {
+            const demoProcesses = [
+                { pid: 1234, name: 'chrome.exe', cpu: 2.5, memory: 150, path: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' },
+                { pid: 2345, name: 'discord.exe', cpu: 1.2, memory: 120, path: 'C:\\Users\\User\\AppData\\Local\\Discord\\app-1.0.9003\\Discord.exe' },
+                { pid: 3456, name: 'game.exe', cpu: 15.5, memory: 800, path: 'C:\\Program Files\\Game\\game.exe' },
+                { pid: 4567, name: 'explorer.exe', cpu: 0.5, memory: 50, path: 'C:\\Windows\\explorer.exe' },
+                { pid: 5678, name: 'svchost.exe', cpu: 0.3, memory: 30, path: 'C:\\Windows\\System32\\svchost.exe' }
+            ];
+            renderProcessData(demoProcesses);
+        }, 1000);
+    }
+}
+
+// Renderizar datos de procesos
+function renderProcessData(processes) {
+    const container = document.querySelector('#processes-tab-pane');
+    if (!container) return;
+    
+    const sortedProcesses = [...processes].sort((a, b) => b.cpu - a.cpu);
+    
+    let html = `
+        <div class="mt-3">
+            <div class="d-flex justify-content-between mb-3">
+                <h5><i class="fas fa-tasks me-2"></i>Procesos en ejecución (${processes.length})</h5>
+                <div>
+                    <div class="input-group">
+                        <input type="text" class="form-control form-control-sm" placeholder="Buscar proceso..." id="processSearchInput">
+                        <button class="btn btn-sm btn-outline-secondary" type="button">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="table table-hover table-striped">
+                    <thead>
+                        <tr>
+                            <th>PID</th>
+                            <th>Nombre</th>
+                            <th>CPU %</th>
+                            <th>Memoria (MB)</th>
+                            <th>Ruta</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+    `;
+    
+    sortedProcesses.forEach(process => {
+        const isSuspicious = process.name.toLowerCase().includes('cheat') || 
+                            process.name.toLowerCase().includes('hack') ||
+                            process.path.toLowerCase().includes('temp');
+        
+        html += `
+            <tr class="${isSuspicious ? 'table-warning' : ''}">
+                <td>${process.pid}</td>
+                <td>${process.name}</td>
+                <td>${process.cpu.toFixed(1)}%</td>
+                <td>${process.memory.toFixed(0)} MB</td>
+                <td><small>${process.path || 'N/A'}</small></td>
+                <td>
+                    <button class="btn btn-sm btn-outline-danger kill-process-btn" data-pid="${process.pid}">
+                        <i class="fas fa-times-circle"></i> Terminar
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    html += `
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+    
+    // Agregar evento de búsqueda
+    const searchInput = document.getElementById('processSearchInput');
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            const searchTerm = this.value.toLowerCase();
+            document.querySelectorAll('#processes-tab-pane tbody tr').forEach(row => {
+                const processName = row.cells[1].textContent.toLowerCase();
+                const processPath = row.cells[4].textContent.toLowerCase();
+                if (processName.includes(searchTerm) || processPath.includes(searchTerm)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+    }
+    
+    // Agregar eventos para botones de terminar proceso
+    document.querySelectorAll('.kill-process-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const pid = this.getAttribute('data-pid');
+            if (confirm(`¿Seguro que desea terminar el proceso ${pid}?`)) {
+                terminateProcess(pid);
+            }
+        });
+    });
+}
+
+// Terminar un proceso
+function terminateProcess(pid) {
+    console.log(`Intentando terminar proceso: ${pid}`);
+    
+    if (!clientData || !clientData.sessionId) {
+        console.error('No hay datos de cliente disponibles');
+        return;
+    }
+    
+    fetch(`/api/kill-process/${clientData.sessionId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ processId: pid })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            addActivity('warning', `Solicitud de terminación enviada para el proceso ${pid}`);
+        } else {
+            addActivity('warning', `Error al intentar terminar el proceso: ${data.error}`);
+        }
+    })
+    .catch(error => {
+        console.error('Error terminando proceso:', error);
+        addActivity('warning', `Error al intentar terminar el proceso: ${error.message}`);
+    });
+}
+
+// Cargar datos de red
+function loadNetworkData(sessionId) {
+    console.log("Cargando datos de red");
+    const container = document.querySelector('#network-tab-pane');
+    if (!container) return;
+    
+    // Mostrar indicador de carga
+    container.innerHTML = `
+        <div class="text-center p-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+            <p class="mt-2">Cargando datos de conexiones de red...</p>
+        </div>
+    `;
+    
+    // Si tenemos datos de red en el clientData, mostrarlos
+    if (clientData && clientData.systemData && clientData.systemData.network) {
+        renderNetworkData(clientData.systemData.network);
+    } else {
+        // Simular datos para desarrollo/demo
+        setTimeout(() => {
+            const demoNetworkData = [
+                { pid: 1234, process: 'chrome.exe', localAddr: '192.168.1.100:52345', remoteAddr: '142.250.185.78:443', state: 'ESTABLISHED', protocol: 'TCP' },
+                { pid: 3456, process: 'game.exe', localAddr: '192.168.1.100:53456', remoteAddr: '104.18.25.143:443', state: 'ESTABLISHED', protocol: 'TCP' },
+                { pid: 3456, process: 'game.exe', localAddr: '192.168.1.100:53457', remoteAddr: '104.18.26.143:443', state: 'ESTABLISHED', protocol: 'TCP' },
+                { pid: 2345, process: 'discord.exe', localAddr: '192.168.1.100:54567', remoteAddr: '162.159.135.232:443', state: 'ESTABLISHED', protocol: 'TCP' },
+                { pid: 4567, process: 'system', localAddr: '192.168.1.100:55678', remoteAddr: '239.255.255.250:1900', state: 'LISTENING', protocol: 'UDP' }
+            ];
+            renderNetworkData(demoNetworkData);
+        }, 1000);
+    }
+}
+
+// Renderizar datos de red
+function renderNetworkData(connections) {
+    const container = document.querySelector('#network-tab-pane');
+    if (!container) return;
+    
+    let html = `
+        <div class="mt-3">
+            <div class="d-flex justify-content-between mb-3">
+                <h5><i class="fas fa-network-wired me-2"></i>Conexiones de red (${connections.length})</h5>
+                <div>
+                    <div class="input-group">
+                        <input type="text" class="form-control form-control-sm" placeholder="Buscar conexión..." id="networkSearchInput">
+                        <button class="btn btn-sm btn-outline-secondary" type="button">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="table table-hover table-striped">
+                    <thead>
+                        <tr>
+                            <th>PID</th>
+                            <th>Proceso</th>
+                            <th>Protocolo</th>
+                            <th>Dirección Local</th>
+                            <th>Dirección Remota</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+    `;
+    
+    connections.forEach(conn => {
+        // Determinar si la conexión es sospechosa (ej: puertos no estándar o IP desconocidas)
+        const isSuspicious = (conn.remoteAddr && !conn.remoteAddr.includes('192.168.') && 
+                             !conn.remoteAddr.includes('239.255.') && 
+                             !conn.state.includes('LISTENING'));
+        
+        html += `
+            <tr class="${isSuspicious ? 'table-warning' : ''}">
+                <td>${conn.pid}</td>
+                <td>${conn.process}</td>
+                <td>${conn.protocol}</td>
+                <td>${conn.localAddr}</td>
+                <td>${conn.remoteAddr || 'N/A'}</td>
+                <td>${conn.state}</td>
+            </tr>
+        `;
+    });
+    
+    html += `
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+    
+    // Agregar evento de búsqueda
+    const searchInput = document.getElementById('networkSearchInput');
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            const searchTerm = this.value.toLowerCase();
+            document.querySelectorAll('#network-tab-pane tbody tr').forEach(row => {
+                const process = row.cells[1].textContent.toLowerCase();
+                const remoteAddr = row.cells[4].textContent.toLowerCase();
+                if (process.includes(searchTerm) || remoteAddr.includes(searchTerm)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+    }
+}
+
+// Cargar datos de dispositivos
+function loadDevicesData(sessionId) {
+    console.log("Cargando datos de dispositivos");
+    const container = document.querySelector('#devices-tab-pane');
+    if (!container) return;
+    
+    // Mostrar indicador de carga
+    container.innerHTML = `
+        <div class="text-center p-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+            <p class="mt-2">Cargando datos de dispositivos...</p>
+        </div>
+    `;
+    
+    // Si tenemos datos de dispositivos en el clientData, mostrarlos
+    if (clientData && clientData.systemData && clientData.systemData.devices) {
+        renderDevicesData(clientData.systemData.devices);
+    } else {
+        // Simular datos para desarrollo/demo
+        setTimeout(() => {
+            const demoDevices = [
+                { id: 'USB\\VID_046D&PID_C52B', name: 'Logitech USB Mouse', type: 'HID', connected: true, time: '2023-03-23T12:34:56' },
+                { id: 'USB\\VID_0951&PID_1666', name: 'Kingston DataTraveler USB', type: 'Mass Storage', connected: true, time: '2023-03-23T12:30:00' },
+                { id: 'USB\\VID_0BDA&PID_8152', name: 'Realtek USB GbE Ethernet', type: 'Network', connected: true, time: '2023-03-23T10:15:23' },
+                { id: 'USB\\VID_8087&PID_0A2B', name: 'Intel Bluetooth Adapter', type: 'Bluetooth', connected: true, time: '2023-03-23T10:15:20' },
+                { id: 'USB\\VID_046D&PID_0825', name: 'Logitech Webcam C270', type: 'Camera', connected: false, time: '2023-03-22T18:45:12' }
+            ];
+            renderDevicesData(demoDevices);
+        }, 1000);
+    }
+}
+
+// Renderizar datos de dispositivos
+function renderDevicesData(devices) {
+    const container = document.querySelector('#devices-tab-pane');
+    if (!container) return;
+    
+    let html = `
+        <div class="mt-3">
+            <div class="d-flex justify-content-between mb-3">
+                <h5><i class="fas fa-usb me-2"></i>Dispositivos USB (${devices.length})</h5>
+                <div>
+                    <button class="btn btn-sm btn-outline-primary" id="refreshDevicesBtn">
+                        <i class="fas fa-sync"></i> Actualizar
+                    </button>
+                </div>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="table table-hover table-striped">
+                    <thead>
+                        <tr>
+                            <th>Dispositivo</th>
+                            <th>Tipo</th>
+                            <th>Estado</th>
+                            <th>Tiempo de conexión</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+    `;
+    
+    devices.forEach(device => {
+        // Determinar si el dispositivo es sospechoso (ej: memorias USB)
+        const isSuspicious = device.type.toLowerCase().includes('storage') && device.connected;
+        
+        html += `
+            <tr class="${isSuspicious ? 'table-warning' : ''}">
+                <td>
+                    <div class="d-flex align-items-center">
+                        <i class="${getDeviceIcon(device.type)} me-2"></i>
+                        <div>
+                            <div>${device.name}</div>
+                            <small class="text-muted">${device.id}</small>
+                        </div>
+                    </div>
+                </td>
+                <td>${device.type}</td>
+                <td>
+                    <span class="badge ${device.connected ? 'bg-success' : 'bg-secondary'}">
+                        ${device.connected ? 'Conectado' : 'Desconectado'}
+                    </span>
+                </td>
+                <td>${formatDate(device.time)}</td>
+            </tr>
+        `;
+    });
+    
+    html += `
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+    
+    // Agregar evento al botón de actualizar
+    const refreshBtn = document.getElementById('refreshDevicesBtn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', function() {
+            loadDevicesData(clientData?.sessionId);
+        });
+    }
+}
+
+// Obtener icono para tipo de dispositivo
+function getDeviceIcon(type) {
+    const typeLC = type.toLowerCase();
+    
+    if (typeLC.includes('mouse') || typeLC.includes('hid')) {
+        return 'fas fa-mouse';
+    } else if (typeLC.includes('keyboard')) {
+        return 'fas fa-keyboard';
+    } else if (typeLC.includes('storage')) {
+        return 'fas fa-hdd';
+    } else if (typeLC.includes('camera')) {
+        return 'fas fa-camera';
+    } else if (typeLC.includes('audio') || typeLC.includes('headset')) {
+        return 'fas fa-headphones';
+    } else if (typeLC.includes('network') || typeLC.includes('ethernet')) {
+        return 'fas fa-ethernet';
+    } else if (typeLC.includes('bluetooth')) {
+        return 'fab fa-bluetooth-b';
+    } else {
+        return 'fas fa-usb';
+    }
+}
+
+// Cargar capturas de pantalla
+function loadScreenshots(sessionId) {
+    console.log("Cargando capturas de pantalla");
+    const container = document.querySelector('#screenshots-tab-pane');
+    if (!container) return;
+    
+    // Si no hay capturas, mostrar mensaje
+    if (screenshotData.length === 0) {
+        container.innerHTML = `
+            <div class="text-center p-5 text-muted">
+                <i class="fas fa-camera fa-3x mb-3"></i>
+                <p>No hay capturas de pantalla disponibles</p>
+                <button class="btn btn-primary" id="requestScreenshotBtn">
+                    <i class="fas fa-camera me-2"></i>Solicitar captura
+                </button>
+            </div>
+        `;
+        
+        // Agregar evento al botón de solicitar captura
+        const requestBtn = document.getElementById('requestScreenshotBtn');
+        if (requestBtn) {
+            requestBtn.addEventListener('click', function() {
+                requestScreenshot(sessionId);
+            });
+        }
+    } else {
+        // Mostrar las capturas disponibles
+        container.innerHTML = `
+            <div class="mt-3">
+                <div class="d-flex justify-content-between mb-3">
+                    <h5><i class="fas fa-images me-2"></i>Capturas de pantalla (${screenshotData.length})</h5>
+                    <div>
+                        <button class="btn btn-sm btn-primary" id="requestScreenshotBtn">
+                            <i class="fas fa-camera me-2"></i>Nueva captura
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="row" id="screenshotsContainer">
+                    ${screenshotData.map((screenshot, index) => `
+                        <div class="col-md-6 mb-4">
+                            <div class="card">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <i class="fas fa-camera me-2"></i>
+                                        Captura #${index + 1} (${formatDate(screenshot.timestamp)})
+                                    </div>
+                                    <button class="btn btn-sm btn-outline-secondary screenshot-fullscreen-btn" data-index="${index}">
+                                        <i class="fas fa-expand"></i>
+                                    </button>
+                                </div>
+                                <div class="card-body p-0">
+                                    <img src="data:image/jpeg;base64,${screenshot.data}" class="img-fluid" alt="Captura de pantalla">
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+        
+        // Agregar evento al botón de solicitar captura
+        const requestBtn = document.getElementById('requestScreenshotBtn');
+        if (requestBtn) {
+            requestBtn.addEventListener('click', function() {
+                requestScreenshot(sessionId);
+            });
+        }
+        
+        // Agregar eventos para ver en pantalla completa
+        document.querySelectorAll('.screenshot-fullscreen-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const index = parseInt(this.getAttribute('data-index'));
+                const screenshot = screenshotData[index];
+                
+                // Crear modal para vista ampliada
+                const modal = document.createElement('div');
+                modal.className = 'modal fade';
+                modal.setAttribute('tabindex', '-1');
+                
+                modal.innerHTML = `
+                    <div class="modal-dialog modal-xl modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Captura de pantalla (${formatDate(screenshot.timestamp)})</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body p-0">
+                                <img src="data:image/jpeg;base64,${screenshot.data}" class="img-fluid" alt="Captura de pantalla">
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                document.body.appendChild(modal);
+                
+                // Inicializar y mostrar el modal
+                const bsModal = new bootstrap.Modal(modal);
+                bsModal.show();
+                
+                // Eliminar el modal del DOM cuando se cierre
+                modal.addEventListener('hidden.bs.modal', function() {
+                    document.body.removeChild(modal);
+                });
+            });
+        });
+    }
+}
+
+// Formatear fecha
+function formatDate(dateStr) {
+    const date = new Date(dateStr);
+    return date.toLocaleString();
 }
 
 // Cargar datos del cliente
@@ -177,6 +749,12 @@ function fetchClientData(sessionId) {
                 
                 // Cargar alertas relacionadas con este cliente
                 loadClientAlerts(sessionId, data.channel);
+            }
+            
+            // Cargar datos para la pestaña activa
+            const activeTab = document.querySelector('.tab-pane.active');
+            if (activeTab) {
+                loadTabContent('#' + activeTab.id, sessionId);
             }
         })
         .catch(error => {
@@ -731,6 +1309,19 @@ function loadClientAlerts(sessionId, channel) {
     
     if (!sessionId || !channel) return;
     
+    const alertsContainer = document.querySelector('#alerts-tab-pane');
+    if (!alertsContainer) return;
+    
+    // Mostrar indicador de carga
+    alertsContainer.innerHTML = `
+        <div class="text-center p-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+            <p class="mt-2">Cargando alertas...</p>
+        </div>
+    `;
+    
     // Solicitar alertas específicas de este cliente
     fetch(`/api/alerts/${channel}?limit=50&sessionId=${sessionId}`)
         .then(response => response.json())
@@ -744,10 +1335,25 @@ function loadClientAlerts(sessionId, channel) {
                 updateAlertCount(data.alerts.length);
             } else {
                 console.log("No se encontraron alertas para este cliente");
+                alertsContainer.innerHTML = `
+                    <div class="text-center p-5 text-muted">
+                        <i class="fas fa-info-circle fa-3x mb-3"></i>
+                        <p>No hay alertas para este cliente</p>
+                    </div>
+                `;
             }
         })
         .catch(error => {
             console.error('Error cargando alertas:', error);
+            alertsContainer.innerHTML = `
+                <div class="text-center p-5 text-danger">
+                    <i class="fas fa-exclamation-triangle fa-3x mb-3"></i>
+                    <p>Error cargando alertas: ${error.message}</p>
+                    <button class="btn btn-primary" onclick="loadClientAlerts('${sessionId}', '${channel}')">
+                        <i class="fas fa-sync me-2"></i>Reintentar
+                    </button>
+                </div>
+            `;
         });
 }
 
@@ -761,18 +1367,39 @@ function updateAlertsTab(alerts) {
     
     // Crear tabla HTML
     let html = `
-        <div class="table-responsive mt-3">
-            <table class="table table-hover">
-                <thead>
-                    <tr>
-                        <th>Timestamp</th>
-                        <th>Tipo</th>
-                        <th>Mensaje</th>
-                        <th>Severidad</th>
-                        <th>Estado</th>
-                    </tr>
-                </thead>
-                <tbody>
+        <div class="mt-3">
+            <div class="d-flex justify-content-between mb-3">
+                <h5><i class="fas fa-exclamation-triangle me-2"></i>Alertas (${alerts.length})</h5>
+                <div>
+                    <div class="btn-group">
+                        <button class="btn btn-sm btn-outline-primary" onclick="loadClientAlerts('${clientData.sessionId}', '${clientData.channel}')">
+                            <i class="fas fa-sync"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                            Filtro <i class="fas fa-filter"></i>
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#" onclick="filterAlerts('all')">Todas</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="filterAlerts('critical')">Críticas</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="filterAlerts('warning')">Advertencias</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="filterAlerts('info')">Informativas</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Tipo</th>
+                            <th>Mensaje</th>
+                            <th>Severidad</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
     `;
     
     // Agregar filas
@@ -791,23 +1418,37 @@ function updateAlertsTab(alerts) {
         }
         
         html += `
-            <tr>
+            <tr data-severity="${alert.severity || 'info'}">
                 <td>${new Date(alert.timestamp).toLocaleString()}</td>
                 <td>${alert.eventType || 'otro'}</td>
                 <td>${alert.message}</td>
-                <td><span class="badge ${severityClass}">${alert.severity}</span></td>
+                <td><span class="badge ${severityClass}">${alert.severity || 'info'}</span></td>
                 <td>${alert.handled ? `<span class="badge bg-success">Gestionada por ${alert.handledBy}</span>` : '<span class="badge bg-secondary">Pendiente</span>'}</td>
             </tr>
         `;
     });
     
     html += `
-                </tbody>
-            </table>
+                    </tbody>
+                </table>
+            </div>
         </div>
     `;
     
     alertsContainer.innerHTML = html;
+}
+
+// Filtrar alertas por severidad
+function filterAlerts(severity) {
+    const rows = document.querySelectorAll('#alerts-tab-pane tbody tr');
+    
+    rows.forEach(row => {
+        if (severity === 'all' || row.dataset.severity === severity) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
 }
 
 // Actualizar contador de alertas
@@ -849,69 +1490,19 @@ function requestScreenshot(sessionId) {
 
 // Mostrar captura de pantalla
 function showScreenshot(imageData, timestamp) {
-    const container = document.querySelector('#screenshots-tab-pane');
-    if (!container) return;
+    // Agregar a la colección de capturas
+    screenshotData.unshift({ data: imageData, timestamp });
     
-    // Crear elemento para la captura
-    const screenshotItem = document.createElement('div');
-    screenshotItem.className = 'screenshot-item mb-4';
-    
-    screenshotItem.innerHTML = `
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <div>
-                    <i class="fas fa-camera me-2"></i>
-                    Captura de pantalla (${new Date(timestamp).toLocaleString()})
-                </div>
-                <button class="btn btn-sm btn-outline-secondary screenshot-fullscreen-btn">
-                    <i class="fas fa-expand"></i>
-                </button>
-            </div>
-            <div class="card-body p-0">
-                <img src="data:image/jpeg;base64,${imageData}" class="img-fluid" alt="Captura de pantalla">
-            </div>
-        </div>
-    `;
-    
-    // Agregar al contenedor
-    if (container.querySelector('.text-center.text-muted')) {
-        container.innerHTML = '';
+    // Si la pestaña de capturas está activa, actualizar su contenido
+    if (document.querySelector('#screenshots-tab-pane.active')) {
+        loadScreenshots(clientData.sessionId);
     }
     
-    container.insertBefore(screenshotItem, container.firstChild);
+    // Mostrar notificación
+    addActivity('info', 'Nueva captura de pantalla recibida');
     
-    // Evento para ver en pantalla completa
-    screenshotItem.querySelector('.screenshot-fullscreen-btn').addEventListener('click', function() {
-        // Crear modal para vista ampliada
-        const modal = document.createElement('div');
-        modal.className = 'modal fade';
-        modal.setAttribute('tabindex', '-1');
-        
-        modal.innerHTML = `
-            <div class="modal-dialog modal-xl modal-dialog-centered">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title">Captura de pantalla (${new Date(timestamp).toLocaleString()})</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body p-0">
-                        <img src="data:image/jpeg;base64,${imageData}" class="img-fluid" alt="Captura de pantalla">
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        document.body.appendChild(modal);
-        
-        // Inicializar y mostrar el modal
-        const bsModal = new bootstrap.Modal(modal);
-        bsModal.show();
-        
-        // Eliminar el modal del DOM cuando se cierre
-        modal.addEventListener('hidden.bs.modal', function() {
-            document.body.removeChild(modal);
-        });
-    });
+    // Reproducir sonido de notificación
+    playSound('info');
 }
 
 // Enviar advertencia al cliente
@@ -1020,3 +1611,6 @@ function generateRandomData(count, min, max) {
     }
     return data;
 }
+
+// Agregar la función filterAlerts al ámbito global para que sea accesible desde HTML
+window.filterAlerts = filterAlerts;
